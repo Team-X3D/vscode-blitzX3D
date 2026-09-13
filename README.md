@@ -1,4 +1,4 @@
-# Language support for Blitz3D
+# Language support for BlitzX3D
 
 > I would like to express my sincere condolences on the death of Mark Sibly, the author of Blitz3D. May he Rest In Peace.
 
