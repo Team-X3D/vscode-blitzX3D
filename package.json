@@ -181,17 +181,20 @@
                         "enum": [
                             "11.8",
                             "11.17",
-                            "11.18"
+                            "11.18",
+                            "X3D"
                         ],
                         "enumItemLabels": [
                             "Legacy",
                             "v1.117",
-                            "v1.118"
+                            "v1.118",
+                            "BlitzX3D"
                         ],
                         "enumDescriptions": [
                             "Blitz3D v1.108b, upto v1.116 / NG",
                             "Blitz3D v1.117",
-                            "Blitz3D v1.118"
+                            "Blitz3D v1.118",
+                            "BlitzX3D"
                         ],
                         "default": "11.18"
                     },
@@ -200,11 +203,13 @@
                         "markdownDescription": "Fallback source of available functions, will be used when it cannot be determined from `blitzcc -k`",
                         "enum": [
                             "B3D",
-                            "LibSGD"
+                            "LibSGD",
+                            "X3D"
                         ],
                         "enumDescriptions": [
                             "List of Blitz3D functions with documentation",
-                            "List of LibSGD functions"
+                            "List of LibSGD functions",
+                            "List of BlitzX3D functions"
                         ],
                         "default": "B3D"
                     }

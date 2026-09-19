@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { compilerVersion } from '../context';
+import { compilerVersion, isBlitzX3D } from '../context';
 import * as bb from '../types';
 import { BlitzLegacyAnalyzer } from './legacy_analyzer';
 import { Blitz117Analyzer } from './v117_analyzer';
@@ -11,6 +11,7 @@ export interface Analyzer {
 }
 
 export function getAnalyzer(bbtext: string, bburi: vscode.Uri, parsed: bb.ParseResult): Analyzer {
+    if (isBlitzX3D) return new Blitz118Analyzer(bbtext, bburi, parsed);
     switch (compilerVersion) {
         case '11.8':
         case '2.0':

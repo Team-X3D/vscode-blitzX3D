@@ -24,6 +24,7 @@ export let analyzer: Analyzer;
 export let analyzed: bb.AnalyzeResult;
 export let compilerVersion = 'loading...';
 export let runtimeFlavour = 'lodading...';
+export let isBlitzX3D = false;
 
 export function updateBlitzPath(notify: boolean) {
     const config: string | undefined = vscode.workspace.getConfiguration('blitz3d.installation').get('BlitzPath');
@@ -38,21 +39,23 @@ export function updateBlitzPath(notify: boolean) {
     cp.exec(`${blitzCmd} -v`, { env: blitzEnv }, (err, stdout, stderr) => {
         if (err || stderr) showErrorOnCompile(stdout, stderr);
         else if (notify) vscode.window.showInformationMessage('BlitzPath updated.');
-        const compilerMatch = stdout.match(/compiler version:([0-9.]+)(:(.*))?/i);
+        const compilerMatch = stdout.match(/compiler version:\s*([0-9.]+)/i);
         compilerVersion = compilerMatch?.[1] || installationConfig.get('SyntaxVersion') || '11.18';
-        const runtimeMatch = stdout.match(/runtime version:([0-9.]+)(:(.*))?/i);
+        const runtimeMatch = stdout.match(/runtime version:\s*([0-9.]+)(?::\s*(.*))?/i);
         const runtimeVersion = runtimeMatch?.[1] || '11.18';
-        runtimeFlavour = runtimeMatch?.[3] || installationConfig.get('RuntimeFlavor') || 'B3D';
+        runtimeFlavour = runtimeMatch?.[2] || installationConfig.get('RuntimeFlavor') || 'B3D';
         console.debug(compilerVersion, runtimeVersion, runtimeFlavour);
         console.debug(stdout);
-        statusBarItem.text = `Blitz3D v${compilerVersion} (${runtimeFlavour})`;
-        statusBarItem.show();
         const document = vscode.window.activeTextEditor?.document;
         // detect functions
         cp.exec(`${blitzCmd} -k`, { env: blitzEnv }, (err, stdout, stderr) => {
             if (err || stderr) builtinFunctions = [];
             builtinFunctions = stdout.split(/\r\n|\r|\n/);
             builtinFunctionsLower = stdout.toLowerCase().split(/\r\n|\r|\n/);
+            isBlitzX3D = builtinFunctionsLower.includes('isnaht') || compilerVersion === 'X3D';
+            if (isBlitzX3D) runtimeFlavour = 'X3D';
+            statusBarItem.text = `${isBlitzX3D ? 'BlitzX3D' : 'Blitz3D'} v${compilerVersion} (${runtimeFlavour})`;
+            statusBarItem.show();
             if (document) {
                 updateContext(document);
                 updateTodos(document);

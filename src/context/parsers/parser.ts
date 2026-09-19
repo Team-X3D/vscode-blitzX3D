@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { compilerVersion } from '../context';
+import { compilerVersion, isBlitzX3D } from '../context';
 import * as bb from '../types';
 import { BlitzLegacyParser } from './legacy_parser';
 import { Blitz117Parser } from './v117_parser';
@@ -11,7 +11,8 @@ export interface Parser {
 }
 
 export function getParser(bbtext: string, bburi: vscode.Uri): Parser {
-    console.debug('switching on', compilerVersion);
+    console.debug('switching on', compilerVersion, isBlitzX3D ? '(BlitzX3D)' : '');
+    if (isBlitzX3D) return new Blitz118Parser(bbtext, bburi);
     switch (compilerVersion) {
         case '11.8':
         case '2.0':
