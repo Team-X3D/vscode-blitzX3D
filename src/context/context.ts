@@ -16,35 +16,51 @@ import compile, { showErrorOnCompile } from '../debug/compilation';
 export let userLibs: bb.Function[] = [];
 export let blitzpath: string = vscode.workspace.getConfiguration('blitz3d.installation').get('BlitzPath') || env['blitzpath'] || '';
 
+let wineMode = false;
+
+function findWine(): string {
+    const configured = vscode.workspace.getConfiguration('blitz3d.installation').get<string>('WineCommand');
+    if (configured) return configured;
+    if (process.platform !== 'win32' && existsSync('/usr/bin/wine32')) return 'wine32';
+    return 'wine';
+}
+
 function findBlitzCmd(): string {
+    wineMode = false;
     if (blitzpath.length == 0) return 'blitzcc';
     const bin = path.join(blitzpath, 'bin');
     const native = path.join(bin, process.platform === 'win32' ? 'blitzcc.exe' : 'blitzcc');
     if (existsSync(native)) return '"' + native + '"';
     const windows = path.join(bin, 'blitzcc.exe');
-    if (existsSync(windows)) return 'wine "' + windows + '"';
+    if (existsSync(windows)) {
+        wineMode = true;
+        return findWine() + ' "' + windows + '"';
+    }
     return '"' + native + '"';
 }
 
 export let blitzCmd = findBlitzCmd();
 
 export function compilerPath(p: string): string {
-    if (!blitzCmd.startsWith('wine ') || /^[A-Za-z]:/.test(p)) return p;
+    if (!wineMode || /^[A-Za-z]:/.test(p)) return p;
     return 'Z:' + p.replace(/\//g, '\\');
 }
 
 export function localPath(p: string): string {
-    if (!blitzCmd.startsWith('wine ')) return p;
+    if (!wineMode) return p;
     if (/^[Zz]:/.test(p)) return p.substring(2).replace(/\\/g, '/');
     return p.replace(/\\/g, '/');
 }
 
 export function getBlitzEnv(): NodeJS.ProcessEnv {
-    return {
+    const result: NodeJS.ProcessEnv = {
         ...process.env,
         'blitzpath': compilerPath(blitzpath),
         'PATH': path.join(blitzpath, 'bin') + path.delimiter + process.env['PATH']
     };
+    const prefix = vscode.workspace.getConfiguration('blitz3d.installation').get<string>('WinePrefix');
+    if (wineMode && prefix) result['WINEPREFIX'] = prefix;
+    return result;
 }
 
 export function getCompilerFlags(): string {
@@ -66,7 +82,7 @@ export function updateBlitzPath(notify: boolean) {
     const blitzEnv = getBlitzEnv();
 
     cp.exec(`${blitzCmd} -v`, { env: blitzEnv }, (err, stdout, stderr) => {
-        if (err || stderr) showErrorOnCompile(stdout, stderr);
+        if (err) showErrorOnCompile(stdout, stderr);
         else if (notify) vscode.window.showInformationMessage('BlitzPath updated.');
         compilerVersion = stdout.match(/compiler version:\s*([0-9.]+)/i)?.[1] ?? '';
         const document = vscode.window.activeTextEditor?.document;
@@ -91,7 +107,7 @@ export function createLaunchContext() {
         const config = vscode.workspace.getConfiguration('launch', folder?.uri);
         const bbfile = config.get<any[]>("configurations")?.[0]?.bbfile;
         if (!bbfile) return;
-        const bbpath = path.isAbsolute(bbfile) ? bbfile : path.join(folder?.uri.fsPath ?? '.', bbfile);
+        const bbpath = resolveLaunchFile(bbfile, folder?.uri);
         const bbtext = readFileSync(bbpath).toString();
         const bburi = vscode.Uri.file(bbpath);
         if (parser) {
@@ -359,17 +375,24 @@ export function updateUserLibs() {
  * @param uri The uri of the open bb file
  * @returns the directory relative to which the program can include
  */
+export function resolveLaunchFile(bbfile: string, uri?: vscode.Uri): string {
+    const folder = uri ? vscode.workspace.getWorkspaceFolder(uri) : undefined;
+    const workspace = folder ?? vscode.workspace.workspaceFolders?.[0];
+    const active = vscode.window.activeTextEditor?.document.fileName ?? '';
+    const file = bbfile
+        .replace(/\$\{workspaceFolder\}|\$\{workspaceRoot\}/gi, workspace?.uri.fsPath ?? '')
+        .replace(/\$\{file\}/gi, uri?.fsPath ?? active)
+        .replace(/\\/g, '/');
+    return path.isAbsolute(file) ? path.normalize(file) : path.join(workspace?.uri.fsPath ?? '.', file);
+}
+
 export function obtainWorkingDir(uri: vscode.Uri): string {
     const config = vscode.workspace.getConfiguration('launch', uri);
     const launchConfigs = config.get<any[]>("configurations");
-    if (!launchConfigs) return uri.path.substring(process.platform === 'win32' ? 1 : 0, uri.path.lastIndexOf('/'));
-    for (const launch of launchConfigs) {
-        if (launch.type == 'blitz3d' && launch.bbfile) {
-            if (path.isAbsolute(launch.bbfile)) return launch.bbfile;
-            const wsFolder = vscode.workspace.workspaceFolders?.find(folder => uri.path.startsWith(folder.uri.path));
-            const wspath = wsFolder?.uri.path.substring(process.platform === 'win32' ? 1 : 0, uri.path.lastIndexOf('/')) || '';
-            return path.join(wspath, launch.bbfile.substring(0, launch.bbfile.lastIndexOf('/')));
+    if (launchConfigs) {
+        for (const launch of launchConfigs) {
+            if (launch.type == 'blitz3d' && launch.bbfile) return path.dirname(resolveLaunchFile(launch.bbfile, uri));
         }
     }
-    return uri.path.substring(process.platform === 'win32' ? 1 : 0, uri.path.lastIndexOf('/'));
+    return path.dirname(uri.fsPath);
 }

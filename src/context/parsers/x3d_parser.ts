@@ -195,7 +195,7 @@ export class BlitzX3DParser implements Parser {
                     const inc = this.toker.text();
                     const start = this.toker.range().start;
                     this.toker.next();
-                    const infile = inc.substring(1, inc.length - 1);
+                    const infile = inc.substring(1, inc.length - 1).replace(/\\/g, '/');
                     const infilepath = isAbsolute(infile) ? infile : join(this.workdir, infile);
                     if (this.included.has(infilepath.toLowerCase())) break;
                     let intext = '';

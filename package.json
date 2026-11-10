@@ -10,7 +10,7 @@
         "type": "git",
         "url": "https://github.com/Team-X3D/vscode-blitzX3D.git"
     },
-    "version": "0.9.6",
+    "version": "0.9.7",
     "engines": {
         "vscode": "^1.75.0"
     },
@@ -173,6 +173,16 @@
                     "blitz3d.installation.BlitzPath": {
                         "type": "string",
                         "description": "Root of the BlitzX3D installation, containing the bin folder.",
+                        "default": ""
+                    },
+                    "blitz3d.installation.WineCommand": {
+                        "type": "string",
+                        "description": "Wine command used to run blitzcc on Linux",
+                        "default": ""
+                    },
+                    "blitz3d.installation.WinePrefix": {
+                        "type": "string",
+                        "description": "Optional WINEPREFIX used when running blitzcc on Linux",
                         "default": ""
                     }
                 }

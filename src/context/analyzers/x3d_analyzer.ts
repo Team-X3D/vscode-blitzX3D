@@ -130,7 +130,7 @@ export class BlitzX3DAnalyzer implements Analyzer {
                     this.toker.next();
                     const inc = this.toker.text();
                     this.toker.next();
-                    const infile = inc.substring(1, inc.length - 1);
+                    const infile = inc.substring(1, inc.length - 1).replace(/\\/g, '/');
                     const infilepath = isAbsolute(infile) ? infile : join(this.workdir, infile);
                     if (this.included.has(infilepath.toLowerCase())) break;
                     let intext = '';

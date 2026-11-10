@@ -1,7 +1,6 @@
 import * as cp from 'child_process';
-import * as path from 'path';
 import * as vscode from 'vscode';
-import { blitzCmd, compilerPath, getBlitzEnv, getCompilerFlags, localPath } from '../context/context';
+import { blitzCmd, compilerPath, getBlitzEnv, getCompilerFlags, localPath, resolveLaunchFile } from '../context/context';
 import { compilationErrors } from '../context/diagnostics';
 
 export default function compile(document: vscode.TextDocument) {
@@ -22,7 +21,7 @@ export default function compile(document: vscode.TextDocument) {
                 try {
                     const config = vscode.workspace.getConfiguration('launch', folder.uri);
                     const bbfile = config.get<any[]>("configurations")?.[0]?.bbfile ?? document.fileName;
-                    const bbpath = path.isAbsolute(bbfile) ? bbfile : path.join(folder.uri.fsPath, bbfile);
+                    const bbpath = resolveLaunchFile(bbfile, document.uri);
                     const uri = vscode.Uri.file(bbpath);
                     if (compiletype == 'Launch file' || uri.path != document.uri.path) blitzcc(uri);
                 } catch (e) {
@@ -74,6 +73,18 @@ function blitzcc(uri: vscode.Uri) {
 
 export function showErrorOnCompile(stdout: string, stderr: string) {
     if (stderr.length > 0) {
+        if (/syswow64/i.test(stderr) || /noexec filesystem/i.test(stderr)) {
+            vscode.window.showErrorMessage('Wine cannot start the 32-bit BlitzX3D compiler. Install 32-bit Wine', 'Go to settings').then(val => {
+                if (val) vscode.commands.executeCommand('workbench.action.openSettings', 'blitz3d.installation.WineCommand');
+            });
+            return;
+        }
+        if (/wine/i.test(stderr) && /(not found|no such file|command not found)/i.test(stderr)) {
+            vscode.window.showErrorMessage('Wine is required to run the BlitzX3D compiler on Linux. Install Wine or set blitz3d.installation.WineCommand.', 'Go to settings').then(val => {
+                if (val) vscode.commands.executeCommand('workbench.action.openSettings', 'blitz3d.installation.WineCommand');
+            });
+            return;
+        }
         vscode.window.showErrorMessage('Your path does not contain the blitzcc command. Please set BlitzPath in the extension settings correctly.', 'Go to settings', 'View error').then(val => {
             switch (val) {
                 case 'View error':
