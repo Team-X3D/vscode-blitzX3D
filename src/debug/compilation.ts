@@ -1,7 +1,7 @@
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { blitzCmd, blitzpath } from '../context/context';
+import { blitzCmd, compilerPath, getBlitzEnv, localPath } from '../context/context';
 import { compilationErrors } from '../context/diagnostics';
 
 export default function compile(document: vscode.TextDocument) {
@@ -22,7 +22,7 @@ export default function compile(document: vscode.TextDocument) {
                 try {
                     const config = vscode.workspace.getConfiguration('launch', folder.uri);
                     const bbfile = config.get<any[]>("configurations")?.[0]?.bbfile ?? document.fileName;
-                    const bbpath = path.isAbsolute(bbfile) ? bbfile : path.join(folder.uri.path.substring(process.platform === 'win32' ? 1 : 0) ?? '.', bbfile);
+                    const bbpath = path.isAbsolute(bbfile) ? bbfile : path.join(folder.uri.fsPath, bbfile);
                     const uri = vscode.Uri.file(bbpath);
                     if (compiletype == 'Launch file' || uri.path != document.uri.path) blitzcc(uri);
                 } catch (e) {
@@ -36,47 +36,37 @@ export default function compile(document: vscode.TextDocument) {
 
 function blitzcc(uri: vscode.Uri) {
 
-    // run compiler with env got from config
-    const env = process.env;
-    const blitzEnv = {
-        'blitzpath': blitzpath,
-        'PATH': path.join(blitzpath, 'bin') + path.delimiter + env['PATH']
-    }
-    cp.exec(`${blitzCmd} -c "${uri.path.substring(process.platform === 'win32' ? 1 : 0)}"`, { env: blitzEnv }, (err, sout, serr) => {
-        if (err) {
-            if (serr.length > 0
-                || sout.trim() == "Can't find blitzpath environment variable"
-                || sout.trim() == "Unable to open linker.dll") {
-                let diagnostics = compilationErrors.get(uri)?.filter(d => d.code !== "blitzcc") ?? [];
-                diagnostics.push({
-                    message: 'BlitzPath is configured incorrectly. Compilation is unavailable.',
-                    range: new vscode.Range(0, 0, 0, 0),
-                    severity: vscode.DiagnosticSeverity.Information,
-                    code: "blitzcc"
-                });
-                compilationErrors.set(uri, diagnostics);
-            }
-            const lines = sout.toLowerCase().split(/\r\n|\r|\n/);
-            const diagnostics = [];
-            for (const l of lines) {
-                if (l.indexOf(':') >= 0 && !l.startsWith('compiling')) {
-                    const s = l.split(':');
-                    const msg = s[s.length - 1];
-                    const file = l.split('"')[1];
-                    const erruri = vscode.Uri.file(file);
-                    const startLine = parseInt(s[s.length - 5]) - 1;
-                    const startChar = parseInt(s[s.length - 4]);
-                    const endLine = parseInt(s[s.length - 3]) - 1;
-                    const endChar = parseInt(s[s.length - 2]);
-                    diagnostics.push({
-                        message: msg,
-                        range: new vscode.Range(startLine, startChar, endLine, endChar),
-                        severity: vscode.DiagnosticSeverity.Error,
-                        code: "blitzcc"
-                    });
-                    compilationErrors.set(erruri, diagnostics);
-                }
-            }
+    const blitzEnv = getBlitzEnv();
+    cp.exec(`${blitzCmd} -c "${compilerPath(uri.fsPath)}"`, { env: blitzEnv }, (err, sout, serr) => {
+        if (err && (serr.length > 0
+            || sout.trim() == "Can't find blitzpath environment variable"
+            || sout.trim() == "Unable to open linker.dll")) {
+            let pathDiagnostics = compilationErrors.get(uri)?.filter(d => d.code !== "blitzcc") ?? [];
+            pathDiagnostics.push({
+                message: 'BlitzPath is configured incorrectly. Compilation is unavailable.',
+                range: new vscode.Range(0, 0, 0, 0),
+                severity: vscode.DiagnosticSeverity.Information,
+                code: "blitzcc"
+            });
+            compilationErrors.set(uri, pathDiagnostics);
+        }
+        const diagnostics = new Map<vscode.Uri, vscode.Diagnostic[]>();
+        for (const line of sout.split(/\r\n|\r|\n/)) {
+            const match = line.match(/^"([^"]*)":(\d+):(\d+):(\d+):(\d+):(.*)$/);
+            if (!match) continue;
+            const erruri = vscode.Uri.file(localPath(match[1]));
+            const warning = /^warning:\s*/i.test(match[6]);
+            const entries = diagnostics.get(erruri) ?? [];
+            entries.push({
+                message: warning ? match[6].replace(/^warning:\s*/i, '') : match[6],
+                range: new vscode.Range(parseInt(match[2]) - 1, parseInt(match[3]), parseInt(match[4]) - 1, parseInt(match[5])),
+                severity: warning ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error,
+                code: "blitzcc"
+            });
+            diagnostics.set(erruri, entries);
+        }
+        for (const [erruri, entries] of diagnostics) {
+            compilationErrors.set(erruri, entries);
         }
     });
 }

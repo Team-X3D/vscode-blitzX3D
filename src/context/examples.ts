@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import { readdirSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { blitzpath } from './context';
 
 /**
@@ -61,6 +61,10 @@ export default function openExample(command?: string) {
                 break;
             case 'Samples':
                 let viewpath = path.join(blitzpath, 'samples');
+                if (!existsSync(viewpath)) {
+                    vscode.window.showWarningMessage('No samples folder found in the Blitz3D installation.');
+                    break;
+                }
                 showSampleBrowser(viewpath);
         }
     });

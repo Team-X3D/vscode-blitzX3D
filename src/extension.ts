@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { initializeContext, updateBlitzPath, updateContext, updateUserLibs } from './context/context';
+import { blitzCmd, blitzpath, compilerPath, initializeContext, updateBlitzPath, updateContext, updateUserLibs } from './context/context';
 import { initializeDiagnostics } from './context/diagnostics';
 import openExample from './context/examples';
 import { generateStubs, updateStubPath } from './context/stubs';
@@ -69,16 +69,16 @@ export function activate(context: vscode.ExtensionContext) {
     //Commands
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.blitz3d.debug', () => {
-            let term = vscode.window.createTerminal("blitzcc");
+            let term = vscode.window.createTerminal({ name: 'blitzcc', env: { blitzpath: compilerPath(blitzpath) } });
             term.show();
-            term.sendText('blitzcc -d "' + vscode.window.activeTextEditor?.document.fileName + '"');
+            term.sendText(blitzCmd + ' -d "' + compilerPath(vscode.window.activeTextEditor?.document.fileName ?? '') + '"');
         })
     );
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.blitz3d.run', () => {
-            let term = vscode.window.createTerminal('blitzcc');
+            let term = vscode.window.createTerminal({ name: 'blitzcc', env: { blitzpath: compilerPath(blitzpath) } });
             term.show();
-            term.sendText('blitzcc "' + vscode.window.activeTextEditor?.document.fileName + '"');
+            term.sendText(blitzCmd + ' "' + compilerPath(vscode.window.activeTextEditor?.document.fileName ?? '') + '"');
         })
     );
     context.subscriptions.push(vscode.commands.registerCommand('extension.blitz3d.openExample', openExample));

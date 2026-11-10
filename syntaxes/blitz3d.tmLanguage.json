@@ -17,15 +17,15 @@
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.control.bb",
-				"match": "(?i)\\b(if|then|else|elseif|endif|select|case|default|end|repeat|until|forever|while|wend|for|to|step|next|exit|goto|gosub|return|function|dim|type|field|new|each|first|last|before|after|insert|delete|data|read|restore|include|null)\\b"
+				"match": "(?i)\\b(if|then|else|elseif|endif|select|case|default|end|repeat|until|forever|while|wend|for|to|step|next|exit|goto|gosub|return|function|dim|type|field|new|each|first|last|before|after|insert|delete|data|read|restore|include|null|enum|switch|do|loop|with|method|fun|final|array|is|isnot)\\b"
 			},
 			{
 				"name": "constant.language.bool.bb",
-				"match": "(?i)\\b(true|false)\\b"
+				"match": "(?i)\\b(true|false|infinity|powtwo)\\b"
 			},
 			{
 				"name": "keyword.operator.logical.bb",
-				"match": "(?i)\\b(and|or|xor|not)\\b"
+				"match": "(?i)\\b(and|or|lor|xor|not)\\b"
 			},
 			{
 				"name": "keyword.operator.bitwise.bb",

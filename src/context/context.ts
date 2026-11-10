@@ -1,5 +1,5 @@
 import * as cp from 'child_process';
-import { readdirSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { env } from 'process';
 import * as vscode from 'vscode';
@@ -15,7 +15,38 @@ import compile, { showErrorOnCompile } from '../debug/compilation';
 
 export let userLibs: bb.Function[] = [];
 export let blitzpath: string = vscode.workspace.getConfiguration('blitz3d.installation').get('BlitzPath') || env['blitzpath'] || '';
-export let blitzCmd = blitzpath.length > 0 ? '"' + path.join(blitzpath, 'bin', process.platform === 'win32' ? 'blitzcc.exe' : 'blitzcc') + '"' : 'blitzcc';
+
+function findBlitzCmd(): string {
+    if (blitzpath.length == 0) return 'blitzcc';
+    const bin = path.join(blitzpath, 'bin');
+    const native = path.join(bin, process.platform === 'win32' ? 'blitzcc.exe' : 'blitzcc');
+    if (existsSync(native)) return '"' + native + '"';
+    const windows = path.join(bin, 'blitzcc.exe');
+    if (existsSync(windows)) return 'wine "' + windows + '"';
+    return '"' + native + '"';
+}
+
+export let blitzCmd = findBlitzCmd();
+
+export function compilerPath(p: string): string {
+    if (!blitzCmd.startsWith('wine ') || /^[A-Za-z]:/.test(p)) return p;
+    return 'Z:' + p.replace(/\//g, '\\');
+}
+
+export function localPath(p: string): string {
+    if (!blitzCmd.startsWith('wine ')) return p;
+    if (/^[Zz]:/.test(p)) return p.substring(2).replace(/\\/g, '/');
+    return p.replace(/\\/g, '/');
+}
+
+export function getBlitzEnv(): NodeJS.ProcessEnv {
+    return {
+        ...process.env,
+        'blitzpath': compilerPath(blitzpath),
+        'PATH': path.join(blitzpath, 'bin') + path.delimiter + process.env['PATH']
+    };
+}
+
 export let builtinFunctions: string[] = [];
 export let builtinFunctionsLower: string[] = [];
 export let parser: Parser;
@@ -29,11 +60,8 @@ export let isBlitzX3D = false;
 export function updateBlitzPath(notify: boolean) {
     const config: string | undefined = vscode.workspace.getConfiguration('blitz3d.installation').get('BlitzPath');
     blitzpath = config || env['blitzpath'] || '';
-    blitzCmd = blitzpath.length > 0 ? '"' + path.join(blitzpath, 'bin', process.platform === 'win32' ? 'blitzcc.exe' : 'blitzcc') + '"' : 'blitzcc';
-    const blitzEnv = {
-        'blitzpath': blitzpath,
-        'PATH': path.join(blitzpath, 'bin') + path.delimiter + env['PATH']
-    };
+    blitzCmd = findBlitzCmd();
+    const blitzEnv = getBlitzEnv();
 
     const installationConfig = vscode.workspace.getConfiguration('blitz3d.installation');
     cp.exec(`${blitzCmd} -v`, { env: blitzEnv }, (err, stdout, stderr) => {
@@ -52,7 +80,7 @@ export function updateBlitzPath(notify: boolean) {
             if (err || stderr) builtinFunctions = [];
             builtinFunctions = stdout.split(/\r\n|\r|\n/);
             builtinFunctionsLower = stdout.toLowerCase().split(/\r\n|\r|\n/);
-            isBlitzX3D = builtinFunctionsLower.includes('isnaht') || compilerVersion === 'X3D';
+            isBlitzX3D = builtinFunctionsLower.includes('createscene') || builtinFunctionsLower.includes('getcurrentscene') || compilerVersion === 'X3D' || installationConfig.get('SyntaxVersion') === 'X3D';
             if (isBlitzX3D) runtimeFlavour = 'X3D';
             statusBarItem.text = `${isBlitzX3D ? 'BlitzX3D' : 'Blitz3D'} v${compilerVersion} (${runtimeFlavour})`;
             statusBarItem.show();
@@ -71,7 +99,7 @@ export function createLaunchContext() {
         const config = vscode.workspace.getConfiguration('launch', folder?.uri);
         const bbfile = config.get<any[]>("configurations")?.[0]?.bbfile;
         if (!bbfile) return;
-        const bbpath = path.isAbsolute(bbfile) ? bbfile : path.join(folder?.uri.path.substring(process.platform === 'win32' ? 1 : 0) ?? '.', bbfile);
+        const bbpath = path.isAbsolute(bbfile) ? bbfile : path.join(folder?.uri.fsPath ?? '.', bbfile);
         const bbtext = readFileSync(bbpath).toString();
         const bburi = vscode.Uri.file(bbpath);
         if (parser) {
