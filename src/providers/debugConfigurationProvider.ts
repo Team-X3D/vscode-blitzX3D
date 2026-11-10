@@ -7,7 +7,7 @@ export default class BlitzConfigurationProvider implements vscode.DebugConfigura
             const editor = vscode.window.activeTextEditor;
             if (editor && editor.document.languageId === 'blitz3d') {
                 config.type = 'blitz3d';
-                config.name = 'Debug Blitz3D program';
+                config.name = 'Debug BlitzX3D program';
                 config.request = 'launch';
                 config.bbfile = '${file}';
             }

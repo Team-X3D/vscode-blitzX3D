@@ -3,12 +3,12 @@ import { isAbsolute, join } from 'path';
 import * as vscode from 'vscode';
 import { isBuiltinBlitzFunction, isIllegalTypeConversion, isTerm } from '../../util/functions';
 import { BlitzToker } from '../../util/toker';
-import { obtainWorkingDir, userLibs } from '../context';
 import * as bb from '../types';
+import { obtainWorkingDir, userLibs } from '../context';
 import { Analyzer } from './analyzer';
 
 
-export class Blitz117Analyzer implements Analyzer {
+export class BlitzX3DAnalyzer implements Analyzer {
 
     uri: vscode.Uri;
     workdir: string;
@@ -25,6 +25,8 @@ export class Blitz117Analyzer implements Analyzer {
     dialect: 'classic' | 'secure' | 'modern' = 'classic';
     arrayDecls: Map<string, bb.DimmedArray>;
     included: Set<string> = new Set<string>();
+    withDepth = 0;
+    withTypes: string[] = [];
 
 
 
@@ -66,6 +68,9 @@ export class Blitz117Analyzer implements Analyzer {
         this.funcs = parsed.funcs;
         this.datas = parsed.datas;
         this.labels = parsed.labels;
+        this.withDepth = 0;
+        this.withTypes = [];
+        this.included.clear();
         this.diagnostics = new Map<vscode.Uri, vscode.Diagnostic[]>();
         this.diagnostics.set(this.uri, []);
 
@@ -125,9 +130,9 @@ export class Blitz117Analyzer implements Analyzer {
                     this.toker.next();
                     const inc = this.toker.text();
                     this.toker.next();
-                    const infile = inc.substring(1, inc.length - 1).toLowerCase();
+                    const infile = inc.substring(1, inc.length - 1);
                     const infilepath = isAbsolute(infile) ? infile : join(this.workdir, infile);
-                    if (this.included.has(infilepath)) break;
+                    if (this.included.has(infilepath.toLowerCase())) break;
                     let intext = '';
                     try {
                         intext = readFileSync(infilepath).toString();
@@ -136,7 +141,7 @@ export class Blitz117Analyzer implements Analyzer {
                         const t_uri = this.uri;
                         this.uri = vscode.Uri.file(infilepath);
                         this.diagnostics.set(this.uri, []);
-                        this.included.add(infilepath);
+                        this.included.add(infilepath.toLowerCase());
                         this.parseStmtSeq(scope, context);
                         this.toker = t_toker;
                         this.uri = t_uri;
@@ -144,8 +149,36 @@ export class Blitz117Analyzer implements Analyzer {
                     break;
                 case 'ident':
                     {
+                        const soft = this.toker.text().toLowerCase();
+                        if (soft == 'do' && this.isDoLoop()) {
+                            this.parseDoLoop(scope, context);
+                            break;
+                        }
+                        if (soft == 'loop' && this.isDoLoopTerminator()) return;
+                        if (soft == 'with' && !this.isWithIdentifier()) {
+                            this.parseWith(scope, context);
+                            break;
+                        }
                         const ident = this.parseIdent();
-                        const tag = this.parseTypeTag();
+                        const trange = this.toker.range();
+                        let tag: string = '';
+                        if (this.dialect == 'modern') {
+                            if (this.toker.curr() == ':') {
+                                if (this.toker.lookAhead(1) == 'ident' && this.toker.lookAhead(2) == '=') {
+                                    this.toker.next();
+                                    tag = this.parseIdent().ident;
+                                    if (tag && !'%#$'.includes(tag) && !this.structs.find(type => type.ident == tag)) this.diagnostics.get(this.uri)?.push({
+                                        message: `Unknown type '${tag}'`,
+                                        range: new vscode.Range(trange.end, this.toker.range().start),
+                                        severity: vscode.DiagnosticSeverity.Error
+                                    });
+                                }
+                            } else {
+                                tag = this.parseTypeTag();
+                            }
+                        } else {
+                            tag = this.parseTypeTag();
+                        }
                         const isDot = (this.dialect == 'modern' && this.toker.curr() == '.') || (this.dialect != 'modern' && this.toker.curr() == '\\');
                         if (!this.arrayDecls.has(ident.ident) && this.toker.curr() != '=' && !isDot && this.toker.curr() != '[') {
                             const fun = this.funcs.concat(userLibs).find(fun => fun.ident == ident.ident);
@@ -183,6 +216,7 @@ export class Blitz117Analyzer implements Analyzer {
                                 range: this.toker.range(),
                                 severity: vscode.DiagnosticSeverity.Error
                             });
+                            if (this.toker.curr() != '=') this.toker.next();
                             this.toker.next();
                             const expression = this.parseExpr(context);
                             const exprtag = expression?.kind.replace('.', expression.type ?? '') || '%';
@@ -221,6 +255,7 @@ export class Blitz117Analyzer implements Analyzer {
                     }
                     break;
                 case 'select':
+                case 'switch':
                     {
                         this.toker.next();
                         this.parseExpr(context);
@@ -241,7 +276,7 @@ export class Blitz117Analyzer implements Analyzer {
                                     nodes.push(expr.value);
                                 }
                                 continue;
-                            } else if (this.toker.curr() == 'default') {
+                            } else if (this.toker.curr() == 'default' || this.toker.curr() == 'caseelse') {
                                 this.toker.next();
                                 this.parseStmtSeq(scope == 'fun' ? 'fun' : 'block', context);
                                 break;
@@ -402,7 +437,11 @@ export class Blitz117Analyzer implements Analyzer {
                 case 'type':
                     this.parseStructDecl(context);
                     break;
+                case 'enum':
+                    this.parseEnumDecl(context);
+                    break;
                 case 'const':
+                case 'final':
                     do {
                         const start = this.toker.range().start;
                         this.toker.next();
@@ -414,12 +453,15 @@ export class Blitz117Analyzer implements Analyzer {
                     } while (this.toker.curr() == ',');
                     break;
                 case 'function':
+                case 'method':
+                case 'fun':
                     const fun = this.parseFuncDecl(context);
                     const prev = this.funcs.find(f => f.ident == fun.ident);
                     if (prev) Object.assign(prev, fun);
                     else this.funcs.push(fun);
                     break;
                 case 'dim':
+                case 'array':
                     do {
                         this.toker.next();
                         this.parseArrayDecl(context);
@@ -443,6 +485,15 @@ export class Blitz117Analyzer implements Analyzer {
                     break;
                 case '.':
                     this.toker.next();
+                    if (this.withDepth > 0) {
+                        this.parseWithField(context, pos);
+                        if (this.toker.curr() == '=' || (['+', '-', '*', '/', '&'].includes(this.toker.curr()) && this.toker.lookAhead(1) == '=')) {
+                            if (this.toker.curr() != '=') this.toker.next();
+                            this.toker.next();
+                            this.parseExpr(context);
+                        }
+                        break;
+                    }
                     this.parseIdent();
                     break;
                 case 'eof':
@@ -467,19 +518,28 @@ export class Blitz117Analyzer implements Analyzer {
             case '$':
                 this.toker.next();
                 return '$';
+            case ':':
+                if (this.dialect != 'modern') break;
+                this.toker.next();
+                if (this.toker.curr() == 'int') { this.toker.next(); return '%'; }
+                if (this.toker.curr() == 'float') { this.toker.next(); return '#'; }
+                if (this.toker.curr() == 'str') { this.toker.next(); return '$'; }
+                return this.parseIdent().ident;
+            case '.':
+                if (this.dialect == 'modern') break;
+                this.toker.next();
+                const trange = this.toker.range();
+                const t = this.parseIdent();
+                if (t.ident && !this.structs.find(type => type.ident == t.ident)) {
+                    this.diagnostics.get(this.uri)?.push({
+                        message: `Unknown type '${t.name}'`,
+                        range: new vscode.Range(trange.end, this.toker.range().start),
+                        severity: vscode.DiagnosticSeverity.Error
+                    });
+                }
+                return t.ident;
         }
-        if ((this.dialect == 'modern' && this.toker.curr() == ':') || (this.dialect != 'modern' && this.toker.curr() == '.')) {
-            this.toker.next();
-            const trange = this.toker.range();
-            const t = this.parseIdent();
-            if (t.ident && !this.structs.find(type => type.ident == t.ident)) this.diagnostics.get(this.uri)?.push({
-                message: `Unknown type '${t.name}'`,
-                range: new vscode.Range(trange.start, this.toker.range().start),
-                severity: vscode.DiagnosticSeverity.Error
-            });
-            return t.ident;
-        }
-        return "";
+        return '';
     }
 
     private parseVar(allowImplicit: boolean, context: bb.Variable[], ident?: bb.Ident, tag?: string, range?: vscode.Range): bb.Variable {
@@ -493,7 +553,7 @@ export class Blitz117Analyzer implements Analyzer {
             this.diagnostics.get(this.uri)?.push({
                 message: 'Implicit variable declaration',
                 range: range!,
-                severity: vscode.DiagnosticSeverity.Hint
+                severity: this.dialect == 'secure' ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Hint
             });
         }
         const illegal = isIllegalTypeConversion(variable?.tag || '%', tag || '%');
@@ -694,6 +754,108 @@ export class Blitz117Analyzer implements Analyzer {
         return type;
     }
 
+    private parseEnumDecl(context: bb.Variable[]) {
+        this.toker.next();
+        this.parseIdent();
+        while (this.toker.curr() == '\n') this.toker.next();
+        let next = 0;
+        while (this.toker.curr() != 'endenum' && this.toker.curr() != 'eof') {
+            if (this.toker.curr() != 'ident') {
+                this.toker.next();
+                continue;
+            }
+            const start = this.toker.range().start;
+            const member = this.parseIdent();
+            let expr: bb.Expression | undefined;
+            if (this.toker.curr() == '=') {
+                this.toker.next();
+                expr = this.parseExpr(context);
+            }
+            const value = typeof expr?.value == 'number' ? expr.value : next;
+            next = value + 1;
+            const variable: bb.Variable = {
+                kind: 'const',
+                ...member,
+                tag: '%',
+                constant: true,
+                range: new vscode.Range(start, this.toker.range().end),
+                declarationRange: this.toker.range(),
+                uri: this.uri,
+                value: value
+            };
+            const existing = this.consts.find(c => c.ident == member.ident);
+            if (existing) Object.assign(existing, variable);
+            else this.consts.push(variable);
+            while (this.toker.curr() == ',' || this.toker.curr() == '\n') this.toker.next();
+        }
+        if (this.toker.curr() == 'endenum') this.toker.next();
+    }
+
+    private isDoLoop(): boolean {
+        return ['while', 'until', ':', '\n', 'eof'].includes(this.toker.lookAhead(1) ?? '\n');
+    }
+
+    private isDoLoopTerminator(): boolean {
+        return this.isDoLoop();
+    }
+
+    private isWithIdentifier(): boolean {
+        const next = this.toker.lookAhead(1) ?? '\n';
+        if (['=', '\\', '[', '(', '%', '#', '$', '@', '.', ':', '\n', 'eof'].includes(next)) return true;
+        return ['+', '-', '*', '/', '&'].includes(next) && this.toker.lookAhead(2) == '=';
+    }
+
+    private parseDoLoop(scope: 'prog' | 'block' | 'fun' | 'line', context: bb.Variable[]) {
+        this.toker.next();
+        const bodyScope = scope == 'fun' ? 'fun' : 'block';
+        if (this.toker.curr() == 'while' || this.toker.curr() == 'until') {
+            this.toker.next();
+            this.parseExpr(context);
+            this.parseStmtSeq(bodyScope, context);
+            this.toker.next();
+        } else {
+            this.parseStmtSeq(bodyScope, context);
+            this.toker.next();
+            if (this.toker.curr() == 'while' || this.toker.curr() == 'until') {
+                this.toker.next();
+                this.parseExpr(context);
+            }
+        }
+    }
+
+    private parseWith(scope: 'prog' | 'block' | 'fun' | 'line', context: bb.Variable[]) {
+        this.toker.next();
+        const expr = this.parseExpr(context);
+        this.withDepth++;
+        this.withTypes.push(expr?.kind == '.' ? expr.type ?? '' : '');
+        this.parseStmtSeq(scope == 'fun' ? 'fun' : 'block', context);
+        this.withDepth--;
+        this.withTypes.pop();
+        if (this.toker.curr() == 'endwith') this.toker.next();
+    }
+
+    private parseWithField(context: bb.Variable[], pos: vscode.Range): bb.Variable | undefined {
+        const start = this.toker.range().start;
+        const ident = this.parseIdent();
+        const tag = this.parseTypeTag();
+        const type = this.structs.find(type => type.ident == this.withTypes[this.withTypes.length - 1]);
+        const field = type?.fields.find(field => field.ident == ident.ident);
+        if (type && !field) this.diagnostics.get(this.uri)?.push({
+            message: `Unknown field '${ident.name}'`,
+            range: new vscode.Range(start, this.toker.range().start),
+            severity: vscode.DiagnosticSeverity.Error
+        });
+        return field ?? {
+            kind: 'field',
+            ...ident,
+            tag: tag,
+            constant: false,
+            range: pos,
+            declarationRange: pos,
+            uri: this.uri
+        };
+    }
+
     private parseIf(scope: 'block' | 'fun', context: bb.Variable[]): any {
         let expr, stmts, elseOpt;
         expr = this.parseExpr(context);
@@ -779,7 +941,7 @@ export class Blitz117Analyzer implements Analyzer {
         if (!lhs) return;
         for (; ;) {
             const c = this.toker.curr();
-            if (c != 'and' && c != 'or' && c != 'xor') return lhs;
+            if (c != 'and' && c != 'or' && c != 'lor' && c != 'xor') return lhs;
             this.toker.next();
             const rhs = this.parseExpr2(context);
             let value: number | undefined;
@@ -824,13 +986,16 @@ export class Blitz117Analyzer implements Analyzer {
                     case 'or':
                         value = lhs.value | rhs.value;
                         break;
+                    case 'lor':
+                        value = lhs.value || rhs.value ? 1 : 0;
+                        break;
                     case 'xor':
                         value = lhs.value ^ rhs.value;
                         break;
                 }
             }
             lhs = {
-                kind: lhs?.kind == '?' && rhs?.kind == '?' ? '?' : '%',
+                kind: c == 'lor' ? '?' : lhs?.kind == '?' && rhs?.kind == '?' ? '?' : '%',
                 lhs: lhs,
                 rhs: rhs,
                 value: value,
@@ -846,10 +1011,36 @@ export class Blitz117Analyzer implements Analyzer {
         if (!lhs) return;
         for (; ;) {
             const c = this.toker.curr();
-            if (c != '<' && c != '>' && c != '=' && c != 'le' && c != 'ge' && c != 'ne') return lhs;
+            const soft = c == 'ident' ? this.toker.text().toLowerCase() : '';
+            const softCompare = soft == 'is' || soft == 'isnot' || soft == 'isnaht';
+            if (c != '<' && c != '>' && c != '=' && c != 'le' && c != 'ge' && c != 'ne' && !softCompare) return lhs;
             this.toker.next();
+            if (softCompare && this.toker.curr() == '(') {
+                this.toker.next();
+                this.parseExprSeq(context);
+                this.toker.next();
+                lhs = {
+                    kind: '?',
+                    lhs: lhs,
+                    range: new vscode.Range(start, this.toker.range().start),
+                    uri: this.uri
+                };
+                continue;
+            }
             const rhs = this.parseExpr3(context);
             let value: boolean | undefined;
+            if (softCompare) {
+                if (lhs.value != undefined && rhs && rhs.value != undefined) value = soft == 'is' ? lhs.value == rhs.value : lhs.value != rhs.value;
+                lhs = {
+                    kind: '?',
+                    lhs: lhs,
+                    rhs: rhs,
+                    value: value,
+                    range: new vscode.Range(start, this.toker.range().start),
+                    uri: this.uri
+                };
+                continue;
+            }
             if (lhs.value != undefined && rhs && rhs.value != undefined) {
                 if (c != '=') checkForArithmeticErrors(c, lhs, rhs, this.diagnostics.get(this.uri)!);
                 switch (c) {
@@ -1016,6 +1207,7 @@ export class Blitz117Analyzer implements Analyzer {
         // TODO implement type checks
         switch (c) {
             case 'int':
+            case 'interger':
                 if (this.toker.next() == '%') this.toker.next();
                 result = {
                     kind: '%',
@@ -1043,7 +1235,7 @@ export class Blitz117Analyzer implements Analyzer {
                 };
                 break;
             case 'object':
-                if ((this.dialect == 'modern' && this.toker.curr() == ':') || (this.dialect != 'modern' && this.toker.curr() == '.')) this.toker.next();
+                if ((this.dialect == 'modern' && this.toker.next() == ':') || (this.dialect != 'modern' && this.toker.next() == '.')) this.toker.next();
                 t = this.parseIdent();
                 this.parseUniExpr(context);
                 result = {
@@ -1151,6 +1343,18 @@ export class Blitz117Analyzer implements Analyzer {
                     uri: this.uri // TODO set value
                 };
                 break;
+            case 'powtwo':
+                {
+                    this.toker.next();
+                    const expr = this.parseUniExpr(context);
+                    result = {
+                        kind: expr.kind,
+                        value: expr.value != undefined ? expr.value * expr.value : undefined,
+                        range: new vscode.Range(start, this.toker.range().start),
+                        uri: this.uri
+                    };
+                }
+                break;
             default:
                 result = this.parsePrimary(context);
                 break;
@@ -1161,6 +1365,16 @@ export class Blitz117Analyzer implements Analyzer {
     private parsePrimary(context: bb.Variable[]): bb.Expression | undefined {
         const start = this.toker.range().start;
         let expression, t: bb.Ident, tag, result: bb.Expression | undefined;
+        if (this.toker.curr() == '.' && this.withDepth > 0) {
+            this.toker.next();
+            const field = this.parseWithField(context, new vscode.Range(start, this.toker.range().start));
+            return {
+                kind: '.',
+                type: field?.tag || '',
+                range: new vscode.Range(start, this.toker.range().start),
+                uri: this.uri
+            };
+        }
         switch (this.toker.curr()) {
             case '(':
                 this.toker.next();
@@ -1271,6 +1485,15 @@ export class Blitz117Analyzer implements Analyzer {
                 result = {
                     kind: '#',
                     value: 3.1415926535897932384626433832795,
+                    range: new vscode.Range(start, this.toker.range().end),
+                    uri: this.uri
+                };
+                this.toker.next();
+                break;
+            case 'infinity':
+                result = {
+                    kind: '#',
+                    value: Infinity,
                     range: new vscode.Range(start, this.toker.range().end),
                     uri: this.uri
                 };

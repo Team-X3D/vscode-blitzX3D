@@ -17,7 +17,7 @@
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.control.bb",
-				"match": "(?i)\\b(if|then|else|elseif|endif|select|case|default|end|repeat|until|forever|while|wend|for|to|step|next|exit|goto|gosub|return|function|dim|type|field|new|each|first|last|before|after|insert|delete|data|read|restore|include|null|enum|switch|do|loop|with|method|fun|final|array|is|isnot)\\b"
+				"match": "(?i)\\b(if|then|else|elseif|endif|select|case|default|end|repeat|until|forever|while|wend|for|to|step|next|exit|goto|gosub|return|function|dim|type|field|new|each|first|last|before|after|insert|delete|data|read|restore|include|null|enum|switch|do|loop|with|method|fun|final|array|is|isnot|endwith|endwhile|endswitch|endsel|endtype|endfunction|endmethod|endfun|caseelse|interger)\\b"
 			},
 			{
 				"name": "constant.language.bool.bb",

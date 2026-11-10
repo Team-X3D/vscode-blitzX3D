@@ -62,7 +62,7 @@ export default function openExample(command?: string) {
             case 'Samples':
                 let viewpath = path.join(blitzpath, 'samples');
                 if (!existsSync(viewpath)) {
-                    vscode.window.showWarningMessage('No samples folder found in the Blitz3D installation.');
+                    vscode.window.showWarningMessage('No samples folder found in the BlitzX3D installation.');
                     break;
                 }
                 showSampleBrowser(viewpath);

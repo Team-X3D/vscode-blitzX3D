@@ -30,6 +30,7 @@ export const legend = (function () {
 
 export default class BlitzSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
     static arrayTokenType: string = '';
+    static withDepth = 0;
 
     async provideDocumentSemanticTokens(document: vscode.TextDocument, token: vscode.CancellationToken): Promise<vscode.SemanticTokens> {
         BlitzSemanticTokensProvider.arrayTokenType = vscode.workspace.getConfiguration('blitz3d.editor').get('DimmedArrayTokenType') || 'array';
@@ -44,6 +45,7 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
     static _parseText(text: string): IParsedToken[] {
         const toker = new BlitzToker(text);
         tokens = [];
+        this.withDepth = 0;
         this.parseStmtSeq(toker, 'prog');
         return tokens;
     }
@@ -63,6 +65,16 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
                     break;
                 case 'ident':
                     {
+                        const soft = toker.text().toLowerCase();
+                        if (soft == 'do' && this.isDoLoop(toker)) {
+                            this.parseDoLoop(toker, scope);
+                            break;
+                        }
+                        if (soft == 'loop' && this.isDoLoop(toker)) return;
+                        if (soft == 'with' && !this.isWithIdentifier(toker)) {
+                            this.parseWith(toker, scope);
+                            break;
+                        }
                         const token: IParsedToken = {
                             tokenType: 'variable',
                             range: toker.range(),
@@ -114,7 +126,7 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
                         toker.next();
                         this.parseExpr(toker);
                         this.parseStmtSeq(toker, 'block');
-                        if (toker.curr() == 'wend') toker.next();
+                        if (toker.curr() == 'wend' || toker.curr() == 'endwhile') toker.next();
                     }
                     break;
                 case 'repeat':
@@ -127,6 +139,7 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
                     }
                     break;
                 case 'select':
+                case 'switch':
                     {
                         toker.next();
                         this.parseExpr(toker);
@@ -137,11 +150,11 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
                                 this.parseExprSeq(toker);
                                 this.parseStmtSeq(toker, 'block');
                                 continue;
-                            } else if (toker.curr() == 'default') {
+                            } else if (toker.curr() == 'default' || toker.curr() == 'caseelse') {
                                 toker.next();
                                 this.parseStmtSeq(toker, 'block');
                                 break;
-                            } else if (toker.curr() == 'endselect') {
+                            } else if (['endselect', 'endswitch', 'endsel'].includes(toker.curr())) {
                                 break;
                             }
                             break;
@@ -236,16 +249,23 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
                 case 'type':
                     this.parseStructDecl(toker);
                     break;
+                case 'enum':
+                    this.parseEnumDecl(toker);
+                    break;
                 case 'const':
+                case 'final':
                     do {
                         toker.next();
                         this.parseVarDecl(toker, 'global', true);
                     } while (toker.curr() == ',');
                     break;
                 case 'function':
+                case 'method':
+                case 'fun':
                     this.parseFuncDecl(toker);
                     break;
                 case 'dim':
+                case 'array':
                     do {
                         toker.next();
                         this.parseArrayDecl(toker);
@@ -265,6 +285,15 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
                     break;
                 case '.':
                     toker.next();
+                    if (this.withDepth > 0) {
+                        this.parseWithField(toker);
+                        if (toker.curr() == '=' || (['+', '-', '*', '/', '&'].includes(toker.curr()) && toker.lookAhead(1) == '=')) {
+                            if (toker.curr() != '=') toker.next();
+                            toker.next();
+                            this.parseExpr(toker);
+                        }
+                        break;
+                    }
                     tokens.push({
                         tokenType: 'string',
                         range: toker.range(),
@@ -415,6 +444,82 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
         toker.next();
     }
 
+    static parseEnumDecl(toker: BlitzToker) {
+        toker.next();
+        if (toker.curr() == 'ident') {
+            tokens.push({
+                tokenType: 'type',
+                range: toker.range(),
+                tokenModifiers: []
+            });
+            toker.next();
+        }
+        while (toker.curr() != 'endenum' && toker.curr() != 'eof') {
+            if (toker.curr() == '\n' || toker.curr() == ',') {
+                toker.next();
+                continue;
+            }
+            tokens.push({
+                tokenType: 'variable',
+                range: toker.range(),
+                tokenModifiers: ['readonly']
+            });
+            toker.next();
+            if (toker.curr() == '=') {
+                toker.next();
+                this.parseExpr(toker);
+            }
+        }
+        if (toker.curr() == 'endenum') toker.next();
+    }
+
+    static isDoLoop(toker: BlitzToker): boolean {
+        return ['while', 'until', ':', '\n', 'eof'].includes(toker.lookAhead(1) ?? '\n');
+    }
+
+    static isWithIdentifier(toker: BlitzToker): boolean {
+        const next = toker.lookAhead(1) ?? '\n';
+        if (['=', '\\', '[', '(', '%', '#', '$', '@', '.', ':', '\n', 'eof'].includes(next)) return true;
+        return ['+', '-', '*', '/', '&'].includes(next) && toker.lookAhead(2) == '=';
+    }
+
+    static parseDoLoop(toker: BlitzToker, scope: 'prog' | 'block' | 'fun' | 'line') {
+        toker.next();
+        const bodyScope = scope == 'fun' ? 'fun' : 'block';
+        if (toker.curr() == 'while' || toker.curr() == 'until') {
+            toker.next();
+            this.parseExpr(toker);
+            this.parseStmtSeq(toker, bodyScope);
+            toker.next();
+        } else {
+            this.parseStmtSeq(toker, bodyScope);
+            toker.next();
+            if (toker.curr() == 'while' || toker.curr() == 'until') {
+                toker.next();
+                this.parseExpr(toker);
+            }
+        }
+    }
+
+    static parseWith(toker: BlitzToker, scope: 'prog' | 'block' | 'fun' | 'line') {
+        toker.next();
+        this.parseExpr(toker);
+        this.withDepth++;
+        this.parseStmtSeq(toker, scope == 'fun' ? 'fun' : 'block');
+        this.withDepth--;
+        if (toker.curr() == 'endwith') toker.next();
+    }
+
+    static parseWithField(toker: BlitzToker) {
+        tokens.push({
+            tokenType: 'field',
+            range: toker.range(),
+            tokenModifiers: []
+        });
+        toker.next();
+        this.parseTypeTag(toker);
+    }
+
     static parseIf(toker: BlitzToker) {
         this.parseExpr(toker);
         if (toker.curr() == 'then') toker.next();
@@ -520,6 +625,7 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
         const c = toker.curr();
         switch (c) {
             case 'int':
+            case 'interger':
                 if (toker.next() == '%') toker.next();
                 break;
             case 'float':
@@ -545,6 +651,7 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
             case '-':
             case 'abs':
             case 'sgn':
+            case 'powtwo':
             case '~':
                 toker.next();
                 this.parseUniExpr(toker, override);
@@ -557,6 +664,11 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
     }
 
     static parsePrimary(toker: BlitzToker, override?: string) {
+        if (toker.curr() == '.' && this.withDepth > 0) {
+            toker.next();
+            this.parseWithField(toker);
+            return;
+        }
         switch (toker.curr()) {
             case '(':
                 toker.next();
@@ -581,6 +693,7 @@ export default class BlitzSemanticTokensProvider implements vscode.DocumentSeman
             case 'binconst':
             case 'hexconst':
             case 'pi':
+            case 'infinity':
             case 'true':
             case 'false':
                 toker.next();

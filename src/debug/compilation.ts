@@ -1,7 +1,7 @@
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { blitzCmd, compilerPath, getBlitzEnv, localPath } from '../context/context';
+import { blitzCmd, compilerPath, getBlitzEnv, getCompilerFlags, localPath } from '../context/context';
 import { compilationErrors } from '../context/diagnostics';
 
 export default function compile(document: vscode.TextDocument) {
@@ -37,7 +37,7 @@ export default function compile(document: vscode.TextDocument) {
 function blitzcc(uri: vscode.Uri) {
 
     const blitzEnv = getBlitzEnv();
-    cp.exec(`${blitzCmd} -c "${compilerPath(uri.fsPath)}"`, { env: blitzEnv }, (err, sout, serr) => {
+    cp.exec(`${blitzCmd}${getCompilerFlags()} -c "${compilerPath(uri.fsPath)}"`, { env: blitzEnv }, (err, sout, serr) => {
         if (err && (serr.length > 0
             || sout.trim() == "Can't find blitzpath environment variable"
             || sout.trim() == "Unable to open linker.dll")) {

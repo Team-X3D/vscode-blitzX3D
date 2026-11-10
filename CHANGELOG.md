@@ -1,7 +1,7 @@
 # Changelog
 
 All major and minor version changes are listed here. Patch version changes should only contain bugfixes.
- > To see all changes in code since the first published version, check out the [GitHub repository](https://github.com/denesfilotas/vscode-blitz3d).
+ > To see all changes in code since the first published version, check out the [GitHub repository](https://github.com/Team-X3D/vscode-blitzX3D).
 
 ## 0.9.5 (pre-release)
 

@@ -14,7 +14,7 @@ export function updateStubPath(updatedPath: string) {
         let stubdoc = readFileSync(stubpath);
         stubs = loadDefaultStubs(stubdoc);
     } else {
-        vscode.window.showInformationMessage('Blitz3D builtin keywords are not stored. Generate stubs from your Blitz3D installation.', 'Generate stubs')
+        vscode.window.showInformationMessage('BlitzX3D builtin keywords are not stored. Generate stubs from your BlitzX3D installation.', 'Generate stubs')
             .then(resp => { if (resp) generateStubs(); });
     }
 }
@@ -124,7 +124,7 @@ function generateStubFromDoc(document: Buffer): BlitzStub {
         declaration: declaration ? declaration : '',
         parameters: parameters,
         description: description,
-        author: ['Blitz3D'],
+        author: ['BlitzX3D'],
         return: '',
         since: '',
         example: example

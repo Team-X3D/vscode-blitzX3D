@@ -50,7 +50,7 @@ export function isBuiltinBlitzFunction(name: string): boolean {
  * @returns true if name is a keyword which shouldn't be followed by parenthesis
  */
 export function isBlitzKeyword(name: string): boolean {
-    return ',if,then,else,elseif,endif,select,case,default,end,and,or,xor,not,repeat,until,forever,while,wend,for,to,step,next,exit,goto,gosub,return,function,const,global,local,dim,type,field,new,each,first,last,insert,delete,true,false,null,data,read,restore,include,pi,mod,shl,shr,sar,enum,switch,endswitch,do,loop,with,endwith,method,endmethod,fun,endfun,final,array,is,isnot,isnaht,lor,infinity,powtwo,addressof,offsetof,object,handle,'.includes(',' + name.toLowerCase() + ',');
+    return ',if,then,else,elseif,endif,select,case,default,end,and,or,xor,not,repeat,until,forever,while,wend,for,to,step,next,exit,goto,gosub,return,function,const,global,local,dim,type,field,new,each,first,last,insert,delete,true,false,null,data,read,restore,include,pi,mod,shl,shr,sar,enum,switch,endswitch,do,loop,with,endwith,endwhile,method,endmethod,fun,endfun,final,array,interger,is,isnot,isnaht,lor,infinity,powtwo,addressof,offsetof,object,handle,endtype,endfunction,caseelse,'.includes(',' + name.toLowerCase() + ',');
 }
 
 /**
@@ -62,7 +62,7 @@ export function startOfComment(line: string): number {
     let instring: boolean = false;
     for (let i = 0; i < line.length; i++) {
         if (line[i] == '"') instring = !instring;
-        if (line[i] == ';' && !instring) return i;
+        if ((line[i] == ';' || line[i] == "'") && !instring) return i;
     }
     return line.length + 1; // so that c >= startOfComment only if the cth is a comment character
 }

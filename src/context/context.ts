@@ -47,15 +47,17 @@ export function getBlitzEnv(): NodeJS.ProcessEnv {
     };
 }
 
+export function getCompilerFlags(): string {
+    return vscode.workspace.getConfiguration('blitz3d.compilation').get<boolean>('ExperimentalSyntax') ? ' -experimental' : '';
+}
+
 export let builtinFunctions: string[] = [];
 export let builtinFunctionsLower: string[] = [];
 export let parser: Parser;
 export let parsed: bb.ParseResult;
 export let analyzer: Analyzer;
 export let analyzed: bb.AnalyzeResult;
-export let compilerVersion = 'loading...';
-export let runtimeFlavour = 'lodading...';
-export let isBlitzX3D = false;
+let compilerVersion = '';
 
 export function updateBlitzPath(notify: boolean) {
     const config: string | undefined = vscode.workspace.getConfiguration('blitz3d.installation').get('BlitzPath');
@@ -63,26 +65,16 @@ export function updateBlitzPath(notify: boolean) {
     blitzCmd = findBlitzCmd();
     const blitzEnv = getBlitzEnv();
 
-    const installationConfig = vscode.workspace.getConfiguration('blitz3d.installation');
     cp.exec(`${blitzCmd} -v`, { env: blitzEnv }, (err, stdout, stderr) => {
         if (err || stderr) showErrorOnCompile(stdout, stderr);
         else if (notify) vscode.window.showInformationMessage('BlitzPath updated.');
-        const compilerMatch = stdout.match(/compiler version:\s*([0-9.]+)/i);
-        compilerVersion = compilerMatch?.[1] || installationConfig.get('SyntaxVersion') || '11.18';
-        const runtimeMatch = stdout.match(/runtime version:\s*([0-9.]+)(?::\s*(.*))?/i);
-        const runtimeVersion = runtimeMatch?.[1] || '11.18';
-        runtimeFlavour = runtimeMatch?.[2] || installationConfig.get('RuntimeFlavor') || 'B3D';
-        console.debug(compilerVersion, runtimeVersion, runtimeFlavour);
-        console.debug(stdout);
+        compilerVersion = stdout.match(/compiler version:\s*([0-9.]+)/i)?.[1] ?? '';
         const document = vscode.window.activeTextEditor?.document;
-        // detect functions
-        cp.exec(`${blitzCmd} -k`, { env: blitzEnv }, (err, stdout, stderr) => {
+        cp.exec(`${blitzCmd}${getCompilerFlags()} -k`, { env: blitzEnv }, (err, stdout, stderr) => {
             if (err || stderr) builtinFunctions = [];
             builtinFunctions = stdout.split(/\r\n|\r|\n/);
             builtinFunctionsLower = stdout.toLowerCase().split(/\r\n|\r|\n/);
-            isBlitzX3D = builtinFunctionsLower.includes('createscene') || builtinFunctionsLower.includes('getcurrentscene') || compilerVersion === 'X3D' || installationConfig.get('SyntaxVersion') === 'X3D';
-            if (isBlitzX3D) runtimeFlavour = 'X3D';
-            statusBarItem.text = `${isBlitzX3D ? 'BlitzX3D' : 'Blitz3D'} v${compilerVersion} (${runtimeFlavour})`;
+            statusBarItem.text = 'BlitzX3D' + (compilerVersion ? ` v${compilerVersion}` : '');
             statusBarItem.show();
             if (document) {
                 updateContext(document);

@@ -7,7 +7,7 @@ import { obtainWorkingDir } from '../context';
 import * as bb from '../types';
 import { Parser } from './parser';
 
-export class Blitz117Parser implements Parser {
+export class BlitzX3DParser implements Parser {
 
     uri: vscode.Uri;
     workdir: string;
@@ -31,6 +31,7 @@ export class Blitz117Parser implements Parser {
     dialect: 'classic' | 'secure' | 'modern' = 'classic';
     arrayDecls: Map<string, bb.DimmedArray> = new Map<string, bb.DimmedArray>();
     included: Set<string> = new Set<string>();
+    withDepth = 0;
 
     toker: BlitzToker;
 
@@ -62,7 +63,7 @@ export class Blitz117Parser implements Parser {
             range: this.toker.range(),
             message: `Syntax error: expecting ${thing}, got ${this.toker.curr().replace('\n', '<eol>')}`,
             severity: vscode.DiagnosticSeverity.Error,
-            source: 'v1.117 Parser'
+            source: 'BlitzX3D Parser'
         });
     }
 
@@ -71,7 +72,7 @@ export class Blitz117Parser implements Parser {
             range: this.toker.range(),
             message: 'Syntax error: ' + message,
             severity: vscode.DiagnosticSeverity.Error,
-            source: 'v1.117 Parser'
+            source: 'BlitzX3D Parser'
         });
     }
 
@@ -83,6 +84,8 @@ export class Blitz117Parser implements Parser {
         this.toker = new BlitzToker(intext);
         this.uri = uri;
         this.workdir = obtainWorkingDir(uri);
+        this.withDepth = 0;
+        this.included.clear();
 
         this.consts = this.consts.filter(constant => constant.uri.path != uri.path);
         this.diagnostics.set(uri, []);
@@ -95,6 +98,7 @@ export class Blitz117Parser implements Parser {
             if (array.uri.path != uri.path) dimmedArrays.set(ident, array);
         }
         this.arrayDecls = dimmedArrays;
+
 
         this.parseStmtSeq('prog');
         if (this.toker.curr() != 'eof') this.expecting('<eof>');
@@ -191,9 +195,9 @@ export class Blitz117Parser implements Parser {
                     const inc = this.toker.text();
                     const start = this.toker.range().start;
                     this.toker.next();
-                    const infile = inc.substring(1, inc.length - 1).toLowerCase();
+                    const infile = inc.substring(1, inc.length - 1);
                     const infilepath = isAbsolute(infile) ? infile : join(this.workdir, infile);
-                    if (this.included.has(infilepath)) break;
+                    if (this.included.has(infilepath.toLowerCase())) break;
                     let intext = '';
                     try {
                         intext = readFileSync(infilepath).toString();
@@ -202,7 +206,7 @@ export class Blitz117Parser implements Parser {
                         const t_uri = this.uri;
                         this.uri = vscode.Uri.file(infilepath);
                         this.diagnostics.set(this.uri, []);
-                        this.included.add(infilepath);
+                        this.included.add(infilepath.toLowerCase());
                         this.parseStmtSeq(scope);
                         if (this.toker.curr() != 'eof') this.expecting('<eof>');
                         this.toker = t_toker;
@@ -217,8 +221,30 @@ export class Blitz117Parser implements Parser {
                     break;
                 case 'ident':
                     {
+                        const soft = this.toker.text().toLowerCase();
+                        if (soft == 'do' && this.isDoLoop()) {
+                            this.parseDoLoop(scope);
+                            break;
+                        }
+                        if (soft == 'loop' && this.isDoLoopTerminator()) return;
+                        if (soft == 'with' && !this.isWithIdentifier()) {
+                            this.parseWith(scope);
+                            break;
+                        }
                         const ident = this.parseIdent();
-                        const tag = this.parseTypeTag();
+                        let tag: string = '';
+                        if (this.dialect == 'modern') {
+                            if (this.toker.curr() == ':') {
+                                if (this.toker.lookAhead(1) == 'ident' && this.toker.lookAhead(2) == '=') {
+                                    this.toker.next();
+                                    tag = this.parseIdent().ident;
+                                }
+                            } else {
+                                tag = this.parseTypeTag();
+                            }
+                        } else {
+                            tag = this.parseTypeTag();
+                        }
                         const isDot = (this.dialect == 'modern' && this.toker.curr() == '.') || (this.dialect != 'modern' && this.toker.curr() == '\\');
                         if (!this.arrayDecls.has(ident.ident) && this.toker.curr() != '=' && !isDot && this.toker.curr() != '[') {
                             let exprs;
@@ -247,9 +273,13 @@ export class Blitz117Parser implements Parser {
                             // const variable = this.parseVar(ident, tag);
                             this.parseVar(ident, tag);
                             // if (!this.arrayDecls.has(ident.ident) && !context.concat(this.globals, this.consts).find(local => local.ident == variable.ident)) context.push(variable);
-                            if (this.toker.curr() != '=') this.expecting('variable assignment');
-                            this.toker.next();
-                            this.parseExpr(false);
+                            const op = this.toker.curr();
+                            if (op != '=' && !(['+', '-', '*', '/', '&'].includes(op) && this.toker.lookAhead(1) == '=')) this.expecting('variable assignment');
+                            else {
+                                if (op != '=') this.toker.next();
+                                this.toker.next();
+                                this.parseExpr(false);
+                            }
                             // variable.range = new vscode.Range(variable.range.start, this.toker.range().end);
                         }
                     }
@@ -266,8 +296,8 @@ export class Blitz117Parser implements Parser {
                         this.toker.next();
                         this.parseExpr(false);
                         this.parseStmtSeq(scope == 'fun' ? 'fun' : 'block');
-                        if (this.toker.curr() == 'wend') this.toker.next();
-                        else this.expecting("'Wend'");
+                        if (this.toker.curr() == 'wend' || this.toker.curr() == 'endwhile') this.toker.next();
+                        else this.expecting("'Wend' or 'End While'");
                     }
                     break;
                 case 'repeat':
@@ -281,6 +311,7 @@ export class Blitz117Parser implements Parser {
                     }
                     break;
                 case 'select':
+                case 'switch':
                     {
                         this.toker.next();
                         this.parseExpr(false);
@@ -292,12 +323,12 @@ export class Blitz117Parser implements Parser {
                                 if (expressions.length == 0) this.expecting('expression sequence');
                                 this.parseStmtSeq(scope == 'fun' ? 'fun' : 'block');
                                 continue;
-                            } else if (this.toker.curr() == 'default') {
+                            } else if (this.toker.curr() == 'default' || this.toker.curr() == 'caseelse') {
                                 this.toker.next();
                                 this.parseStmtSeq(scope == 'fun' ? 'fun' : 'block');
-                                if (this.toker.curr() != 'endselect') this.expecting("'End Select'");
+                                if (!this.isSelectEnd()) this.expecting("'End Select' or 'End Switch'");
                                 break;
-                            } else if (this.toker.curr() == 'endselect') {
+                            } else if (this.isSelectEnd()) {
                                 break;
                             }
                             this.expecting("'Case', 'Default' or 'End Select'");
@@ -406,7 +437,12 @@ export class Blitz117Parser implements Parser {
                     if (scope != 'prog') this.exception('Types can only be declared in the main program');
                     this.structs.push(this.parseStructDecl());
                     break;
+                case 'enum':
+                    if (scope != 'prog') this.exception('Enum can only be declared in the main program');
+                    this.parseEnumDecl();
+                    break;
                 case 'const':
+                case 'final':
                     if (scope != 'prog') this.exception('Constants can only be declared in the main program');
                     do {
                         const start = this.toker.range().start;
@@ -415,6 +451,8 @@ export class Blitz117Parser implements Parser {
                     } while (this.toker.curr() == ',');
                     break;
                 case 'function':
+                case 'method':
+                case 'fun':
                     if (scope != 'prog') this.exception('Functions can only be defined in the main program');
                     const fun = this.parseFuncDecl();
                     fun.description = this.bbdoc.descLines.join('  \n');
@@ -445,6 +483,7 @@ export class Blitz117Parser implements Parser {
                     };
                     break;
                 case 'dim':
+                case 'array':
                     do {
                         this.toker.next();
                         this.parseArrayDecl();
@@ -470,6 +509,16 @@ export class Blitz117Parser implements Parser {
                     {
                         const start = this.toker.range().start;
                         this.toker.next();
+                        if (this.withDepth > 0) {
+                            this.parseIdent();
+                            this.parseTypeTag();
+                            if (this.toker.curr() == '=' || (['+', '-', '*', '/', '&'].includes(this.toker.curr()) && this.toker.lookAhead(1) == '=')) {
+                                if (this.toker.curr() != '=') this.toker.next();
+                                this.toker.next();
+                                this.parseExpr(false);
+                            }
+                            break;
+                        }
                         const range = this.toker.range();
                         const ident = this.parseIdent();
                         if (this.labels.find(label => label.ident == ident.ident)) this.diagnostics.get(this.uri)?.push({
@@ -509,12 +558,19 @@ export class Blitz117Parser implements Parser {
             case '$':
                 this.toker.next();
                 return '$';
+            case ':':
+                if (this.dialect != 'modern') break;
+                this.toker.next();
+                if (this.toker.curr() == 'int') { this.toker.next(); return '%'; }
+                if (this.toker.curr() == 'float') { this.toker.next(); return '#'; }
+                if (this.toker.curr() == 'str') { this.toker.next(); return '$'; }
+                return this.parseIdent().ident;
+            case '.':
+                if (this.dialect == 'modern') break;
+                this.toker.next();
+                return this.parseIdent().ident;
         }
-        if ((this.dialect == 'modern' && this.toker.curr() == ':') || (this.dialect != 'modern' && this.toker.curr() == '.')) {
-            this.toker.next();
-            return this.parseIdent().ident;
-        }
-        return "";
+        return '';
     }
 
     parseVar(ident?: bb.Ident, tag?: string, mustExist = true): bb.Variable {
@@ -652,7 +708,7 @@ export class Blitz117Parser implements Parser {
         this.toker.next();
         const locals = [...params];
         this.parseStmtSeq('fun');
-        if (this.toker.curr() != 'endfunction' && this.toker.curr() != 'end') this.expecting("'End Function' or 'End'");
+        if (!['endfunction', 'end', 'endmethod', 'endfun'].includes(this.toker.curr())) this.expecting("'End Function' or 'End'");
         const declRangeEnd = this.toker.range().end;
         this.toker.next();
         return {
@@ -755,6 +811,95 @@ export class Blitz117Parser implements Parser {
         return type;
     }
 
+    parseEnumDecl() {
+        this.toker.next();
+        this.parseIdent();
+        while (this.toker.curr() == '\n') this.toker.next();
+        let next = 0;
+        while (this.toker.curr() != 'endenum' && this.toker.curr() != 'eof') {
+            if (this.toker.curr() != 'ident') {
+                this.expecting('enum member');
+                this.toker.next();
+                continue;
+            }
+            const start = this.toker.range().start;
+            const member = this.parseIdent();
+            let expr: bb.Expression | undefined;
+            if (this.toker.curr() == '=') {
+                this.toker.next();
+                expr = this.parseExpr(false);
+            }
+            const value = typeof expr?.value == 'number' ? expr.value : next;
+            next = value + 1;
+            this.consts.push({
+                kind: 'const',
+                ...member,
+                tag: '%',
+                constant: true,
+                range: new vscode.Range(start, this.toker.range().end),
+                declarationRange: this.toker.range(),
+                uri: this.uri,
+                value: value
+            });
+            while (this.toker.curr() == ',' || this.toker.curr() == '\n') this.toker.next();
+        }
+        if (this.toker.curr() != 'endenum') this.expecting("'End Enum'");
+        else this.toker.next();
+    }
+
+    isDoLoop(): boolean {
+        return ['while', 'until', ':', '\n', 'eof'].includes(this.toker.lookAhead(1) ?? '\n');
+    }
+
+    isDoLoopTerminator(): boolean {
+        return this.isDoLoop();
+    }
+
+    isLoopToken(): boolean {
+        return this.toker.curr() == 'loop' || (this.toker.curr() == 'ident' && this.toker.text().toLowerCase() == 'loop');
+    }
+
+    isWithIdentifier(): boolean {
+        const next = this.toker.lookAhead(1) ?? '\n';
+        if (['=', '\\', '[', '(', '%', '#', '$', '@', '.', ':', '\n', 'eof'].includes(next)) return true;
+        return ['+', '-', '*', '/', '&'].includes(next) && this.toker.lookAhead(2) == '=';
+    }
+
+    isSelectEnd(): boolean {
+        return ['endselect', 'endswitch', 'endsel'].includes(this.toker.curr());
+    }
+
+    parseDoLoop(scope: 'prog' | 'block' | 'fun' | 'line') {
+        this.toker.next();
+        const bodyScope = scope == 'fun' ? 'fun' : 'block';
+        if (this.toker.curr() == 'while' || this.toker.curr() == 'until') {
+            this.toker.next();
+            this.parseExpr(false);
+            this.parseStmtSeq(bodyScope);
+            if (!this.isLoopToken()) this.expecting("'Loop'");
+            else this.toker.next();
+        } else {
+            this.parseStmtSeq(bodyScope);
+            if (!this.isLoopToken()) this.expecting("'Loop'");
+            else this.toker.next();
+            if (this.toker.curr() == 'while' || this.toker.curr() == 'until') {
+                this.toker.next();
+                this.parseExpr(false);
+            }
+        }
+    }
+
+    parseWith(scope: 'prog' | 'block' | 'fun' | 'line') {
+        this.toker.next();
+        this.parseExpr(false);
+        const prev = this.withDepth;
+        this.withDepth++;
+        this.parseStmtSeq(scope == 'fun' ? 'fun' : 'block');
+        this.withDepth = prev;
+        if (this.toker.curr() != 'endwith') this.expecting("'End With'");
+        else this.toker.next();
+    }
+
     parseIf(scope: 'block' | 'fun'): any {
         let expr, stmts, elseOpt;
         expr = this.parseExpr(false);
@@ -822,7 +967,7 @@ export class Blitz117Parser implements Parser {
         if (!lhs) return;
         for (; ;) {
             const c = this.toker.curr();
-            if (c != 'and' && c != 'or' && c != 'xor') return lhs;
+            if (c != 'and' && c != 'or' && c != 'lor' && c != 'xor') return lhs;
             this.toker.next();
             const rhs = this.parseExpr2(false);
             let value: number | undefined;
@@ -867,13 +1012,16 @@ export class Blitz117Parser implements Parser {
                     case 'or':
                         value = lhs.value | rhs.value;
                         break;
+                    case 'lor':
+                        value = lhs.value || rhs.value ? 1 : 0;
+                        break;
                     case 'xor':
                         value = lhs.value ^ rhs.value;
                         break;
                 }
             }
             lhs = {
-                kind: lhs?.kind == '?' && rhs?.kind == '?' ? '?' : '%',
+                kind: c == 'lor' ? '?' : lhs?.kind == '?' && rhs?.kind == '?' ? '?' : '%',
                 lhs: lhs,
                 rhs: rhs,
                 value: value,
@@ -889,10 +1037,37 @@ export class Blitz117Parser implements Parser {
         if (!lhs) return;
         for (; ;) {
             const c = this.toker.curr();
-            if (c != '<' && c != '>' && c != '=' && c != 'le' && c != 'ge' && c != 'ne') return lhs;
+            const soft = c == 'ident' ? this.toker.text().toLowerCase() : '';
+            const softCompare = soft == 'is' || soft == 'isnot' || soft == 'isnaht';
+            if (c != '<' && c != '>' && c != '=' && c != 'le' && c != 'ge' && c != 'ne' && !softCompare) return lhs;
             this.toker.next();
+            if (softCompare && this.toker.curr() == '(') {
+                this.toker.next();
+                this.parseExprSeq();
+                if (this.toker.curr() != ')') this.expecting("')'");
+                this.toker.next();
+                lhs = {
+                    kind: '?',
+                    lhs: lhs,
+                    range: new vscode.Range(start, this.toker.range().start),
+                    uri: this.uri
+                };
+                continue;
+            }
             const rhs = this.parseExpr3(false);
             let value: boolean | undefined;
+            if (softCompare) {
+                if (lhs.value != undefined && rhs && rhs.value != undefined) value = soft == 'is' ? lhs.value == rhs.value : lhs.value != rhs.value;
+                lhs = {
+                    kind: '?',
+                    lhs: lhs,
+                    rhs: rhs,
+                    value: value,
+                    range: new vscode.Range(start, this.toker.range().start),
+                    uri: this.uri
+                };
+                continue;
+            }
             if (lhs.value != undefined && rhs && rhs.value != undefined) {
                 checkForArithmeticErrors(c, lhs, rhs, this.diagnostics.get(this.uri)!);
                 switch (c) {
@@ -1057,6 +1232,7 @@ export class Blitz117Parser implements Parser {
         const start = this.toker.range().start;
         switch (c) {
             case 'int':
+            case 'interger':
                 if (this.toker.next() == '%') this.toker.next();
                 result = {
                     kind: '%',
@@ -1124,11 +1300,12 @@ export class Blitz117Parser implements Parser {
             case '-':
             case 'abs':
             case 'sgn':
+            case 'powtwo':
                 this.toker.next();
                 const expr = this.parseUniExpr(false);
                 result = {
                     kind: expr?.kind || '%',
-                    value: expr?.value, // value calculated at analyze stage
+                    value: c == 'powtwo' && expr?.value != undefined ? expr.value * expr.value : expr?.value,
                     range: new vscode.Range(start, this.toker.range().start),
                     uri: this.uri
                 };
@@ -1152,6 +1329,17 @@ export class Blitz117Parser implements Parser {
     parsePrimary(optional: boolean): bb.Expression | undefined {
         const start = this.toker.range().start;
         let expression, t, ident, tag, result: bb.Expression | undefined;
+        if (this.toker.curr() == '.' && this.withDepth > 0) {
+            this.toker.next();
+            this.parseIdent();
+            const fieldTag = this.parseTypeTag();
+            return {
+                kind: '.',
+                type: fieldTag,
+                range: new vscode.Range(start, this.toker.range().end),
+                uri: this.uri
+            };
+        }
         switch (this.toker.curr()) {
             case '(':
                 this.toker.next();
@@ -1247,6 +1435,15 @@ export class Blitz117Parser implements Parser {
                 result = {
                     kind: '#',
                     value: 3.1415926535897932384626433832795,
+                    range: new vscode.Range(start, this.toker.range().end),
+                    uri: this.uri
+                };
+                this.toker.next();
+                break;
+            case 'infinity':
+                result = {
+                    kind: '#',
+                    value: Infinity,
                     range: new vscode.Range(start, this.toker.range().end),
                     uri: this.uri
                 };

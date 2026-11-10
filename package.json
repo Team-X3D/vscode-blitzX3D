@@ -1,14 +1,14 @@
 {
-    "name": "blitz3d",
-    "displayName": "Blitz3D",
+    "name": "blitzx3d",
+    "displayName": "BlitzX3D",
     "author": {
         "name": "dones"
     },
     "publisher": "dones",
-    "description": "Language support for BlitzBasic included in Blitz3D.",
+    "description": "Language support for BlitzX3D.",
     "repository": {
         "type": "git",
-        "url": "https://github.com/denesfilotas/vscode-blitz3d.git"
+        "url": "https://github.com/Team-X3D/vscode-blitzX3D.git"
     },
     "version": "0.9.6",
     "engines": {
@@ -24,6 +24,7 @@
             {
                 "id": "blitz3d",
                 "aliases": [
+                    "BlitzX3D",
                     "BlitzBasic",
                     "Blitz3D"
                 ],
@@ -37,7 +38,7 @@
             {
                 "id": "blitz3d-decls",
                 "aliases": [
-                    "Blitz3D library declarations"
+                    "BlitzX3D library declarations"
                 ],
                 "extensions": [
                     "decls"
@@ -70,24 +71,24 @@
         "commands": [
             {
                 "title": "Debug open file",
-                "category": "Blitz3D",
+                "category": "BlitzX3D",
                 "command": "extension.blitz3d.debug",
                 "enablement": "editorLangId == blitz3d"
             },
             {
                 "title": "Run open file without debugging",
-                "category": "Blitz3D",
+                "category": "BlitzX3D",
                 "command": "extension.blitz3d.run",
                 "enablement": "editorLangId == blitz3d"
             },
             {
                 "title": "Generate BlitzDoc stubs",
-                "category": "Blitz3D",
+                "category": "BlitzX3D",
                 "command": "extension.blitz3d.generatestubs"
             },
             {
                 "title": "Open Example",
-                "category": "Blitz3D",
+                "category": "BlitzX3D",
                 "command": "extension.blitz3d.openExample"
             }
         ],
@@ -97,7 +98,7 @@
                 "languages": [
                     "blitz3d"
                 ],
-                "label": "Debug Blitz3D",
+                "label": "Debug BlitzX3D",
                 "program": "../out/debug.js",
                 "runtime": "node",
                 "configurationAttributes": {
@@ -108,7 +109,7 @@
                         "properties": {
                             "bbfile": {
                                 "type": "string",
-                                "description": "Blitz3D program to run",
+                                "description": "BlitzX3D program to run",
                                 "default": ""
                             }
                         }
@@ -121,7 +122,7 @@
                         "properties": {
                             "bbfile": {
                                 "type": "string",
-                                "description": "Blitz3D program to build",
+                                "description": "BlitzX3D program to build",
                                 "default": ""
                             },
                             "outfile": {
@@ -136,13 +137,13 @@
                     {
                         "type": "blitz3d",
                         "request": "launch",
-                        "name": "Run blitz program",
+                        "name": "Run BlitzX3D program",
                         "bbfile": "${file}"
                     }
                 ],
                 "configurationSnippets": [
                     {
-                        "label": "Blitz3D: Debug",
+                        "label": "BlitzX3D: Debug",
                         "description": "New configuration for debugging bb files",
                         "body": {
                             "type": "blitz3d",
@@ -152,7 +153,7 @@
                         }
                     },
                     {
-                        "label": "Blitz3D: Build",
+                        "label": "BlitzX3D: Build",
                         "description": "New configuration for building executables from bb files",
                         "body": {
                             "type": "blitz3d",
@@ -167,51 +168,12 @@
         ],
         "configuration": [
             {
-                "title": "Blitz3D installation",
+                "title": "BlitzX3D installation",
                 "properties": {
                     "blitz3d.installation.BlitzPath": {
                         "type": "string",
-                        "description": "Root of Blitz3D installation, containing the bin folder.",
-                        "default": "C:\\Program Files (x86)\\Blitz3D"
-                    },
-                    "blitz3d.installation.SyntaxVersion": {
-                        "type": "string",
-                        "title": "Fallback Blitz3D version",
-                        "markdownDescription": "This syntax version will be used when it cannot be determined from `blitzcc -v`",
-                        "enum": [
-                            "11.8",
-                            "11.17",
-                            "11.18",
-                            "X3D"
-                        ],
-                        "enumItemLabels": [
-                            "Legacy",
-                            "v1.117",
-                            "v1.118",
-                            "BlitzX3D"
-                        ],
-                        "enumDescriptions": [
-                            "Blitz3D v1.108b, upto v1.116 / NG",
-                            "Blitz3D v1.117",
-                            "Blitz3D v1.118",
-                            "BlitzX3D"
-                        ],
-                        "default": "11.18"
-                    },
-                    "blitz3d.installation.RuntimeFlavor": {
-                        "type": "string",
-                        "markdownDescription": "Fallback source of available functions, will be used when it cannot be determined from `blitzcc -k`",
-                        "enum": [
-                            "B3D",
-                            "LibSGD",
-                            "X3D"
-                        ],
-                        "enumDescriptions": [
-                            "List of Blitz3D functions with documentation",
-                            "List of LibSGD functions",
-                            "List of BlitzX3D functions"
-                        ],
-                        "default": "B3D"
+                        "description": "Root of the BlitzX3D installation, containing the bin folder.",
+                        "default": ""
                     }
                 }
             },
@@ -220,7 +182,7 @@
                 "properties": {
                     "blitz3d.outline.ClassicOutlineSymbols": {
                         "type": "boolean",
-                        "description": "Use Blitz3D-style categorized symbols in outline view."
+                        "description": "Use BlitzX3D-style categorized symbols in outline view."
                     },
                     "blitz3d.outline.ParametersInOutline": {
                         "type": "boolean",
@@ -287,6 +249,11 @@
                         ],
                         "description": "Choose which files to be checked by the compiler on every save",
                         "default": "Launch file"
+                    },
+                    "blitz3d.compilation.ExperimentalSyntax": {
+                        "type": "boolean",
+                        "description": "Pass -experimental to blitzcc and enable experimental syntax keywords in code completion",
+                        "default": false
                     }
                 }
             }
@@ -335,7 +302,6 @@
     },
     "dependencies": {
         "@vscode/debugadapter": "^1.68.0",
-        "blitz3d": "file:",
         "tree-kill": "^1.2.2"
     }
 }

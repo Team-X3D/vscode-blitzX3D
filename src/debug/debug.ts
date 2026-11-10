@@ -3,7 +3,7 @@ import { DebugProtocol } from '@vscode/debugprotocol';
 import * as cp from 'child_process';
 import * as treekill from 'tree-kill';
 import * as vscode from 'vscode';
-import { blitzCmd, compilerPath, getBlitzEnv } from '../context/context';
+import { blitzCmd, compilerPath, getBlitzEnv, getCompilerFlags } from '../context/context';
 
 export default class DebugAdapterDescriptorFactory implements vscode.DebugAdapterDescriptorFactory {
     createDebugAdapterDescriptor(session: vscode.DebugSession, executable: vscode.DebugAdapterExecutable | undefined): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
@@ -26,7 +26,7 @@ class DebugAdapter extends DebugSession {
     }
 
     protected launchRequest(response: DebugProtocol.LaunchResponse, args: BlitzLaunchRequestArguments, request?: DebugProtocol.Request | undefined): void {
-        const cmd = `${blitzCmd} ${args.noDebug ? ' ' : ' -d '} "${compilerPath(args.bbfile)}"`;
+        const cmd = `${blitzCmd}${getCompilerFlags()} ${args.noDebug ? ' ' : ' -d '} "${compilerPath(args.bbfile)}"`;
         this.debugProcess = cp.exec(cmd, { env: getBlitzEnv() });
         this.debugProcess.addListener('exit', code => this.sendEvent(new ExitedEvent(code ? code : 0)));
         this.debugProcess.addListener('close', () => this.sendEvent(new TerminatedEvent(false)));

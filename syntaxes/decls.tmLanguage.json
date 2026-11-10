@@ -1,6 +1,6 @@
 {
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-    "name": "Blitz3D library declarations",
+    "name": "BlitzX3D library declarations",
     "scopeName": "source.decls",
     "patterns": [
         {

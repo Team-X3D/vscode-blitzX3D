@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { blitzCmd, blitzpath, compilerPath, initializeContext, updateBlitzPath, updateContext, updateUserLibs } from './context/context';
+import { blitzCmd, blitzpath, compilerPath, getCompilerFlags, initializeContext, updateBlitzPath, updateContext, updateUserLibs } from './context/context';
 import { initializeDiagnostics } from './context/diagnostics';
 import openExample from './context/examples';
 import { generateStubs, updateStubPath } from './context/stubs';
@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
     initializeDiagnostics(context);
 
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right);
-    statusBarItem.tooltip = 'Blitz3D environment';
+    statusBarItem.tooltip = 'BlitzX3D environment';
     statusBarItem.command = {
         title: 'Change BlitzPath',
         command: 'workbench.action.openSettings',
@@ -71,14 +71,14 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('extension.blitz3d.debug', () => {
             let term = vscode.window.createTerminal({ name: 'blitzcc', env: { blitzpath: compilerPath(blitzpath) } });
             term.show();
-            term.sendText(blitzCmd + ' -d "' + compilerPath(vscode.window.activeTextEditor?.document.fileName ?? '') + '"');
+            term.sendText(blitzCmd + getCompilerFlags() + ' -d "' + compilerPath(vscode.window.activeTextEditor?.document.fileName ?? '') + '"');
         })
     );
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.blitz3d.run', () => {
             let term = vscode.window.createTerminal({ name: 'blitzcc', env: { blitzpath: compilerPath(blitzpath) } });
             term.show();
-            term.sendText(blitzCmd + ' "' + compilerPath(vscode.window.activeTextEditor?.document.fileName ?? '') + '"');
+            term.sendText(blitzCmd + getCompilerFlags() + ' "' + compilerPath(vscode.window.activeTextEditor?.document.fileName ?? '') + '"');
         })
     );
     context.subscriptions.push(vscode.commands.registerCommand('extension.blitz3d.openExample', openExample));
@@ -104,7 +104,8 @@ export function activate(context: vscode.ExtensionContext) {
                 .then((resp) => { if (resp) vscode.commands.executeCommand('workbench.action.reloadWindow'); });
         }
         if (event.affectsConfiguration('blitz3d.installation')) updateBlitzPath(true);
+        if (event.affectsConfiguration('blitz3d.compilation.ExperimentalSyntax')) updateBlitzPath(false);
         initializeContext();
     }));
-    console.log('Blitz3D extension activated.');
+    console.log('BlitzX3D extension activated.');
 }

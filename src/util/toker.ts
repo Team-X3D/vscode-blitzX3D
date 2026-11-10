@@ -31,7 +31,7 @@ function isalnum(ch: string): boolean {
     return '0123456789_abcdefghijklmnopqrstuvwxyz'.includes(ch.toLowerCase());
 }
 
-const keywords = ['dim', 'goto', 'gosub', 'return', 'exit', 'if', 'then', 'else', 'endif', 'end if', 'elseif', 'else if', 'while', 'wend', 'for', 'to', 'step', 'next', 'function', 'end function', 'type', 'end type', 'each', 'local', 'global', 'field', 'const', 'select', 'case', 'default', 'end select', 'repeat', 'until', 'forever', 'data', 'read', 'restore', 'abs', 'sgn', 'mod', 'pi', 'true', 'false', 'int', 'float', 'str', 'include', 'dialect', 'new', 'delete', 'first', 'last', 'insert', 'before', 'after', 'null', 'object', 'handle', 'and', 'or', 'xor', 'not', 'shl', 'shr', 'sar'];
+const keywords = ['dim', 'goto', 'gosub', 'return', 'exit', 'if', 'then', 'else', 'endif', 'end if', 'elseif', 'else if', 'while', 'wend', 'end while', 'endwhile', 'for', 'to', 'step', 'next', 'function', 'end function', 'endfunction', 'method', 'end method', 'endmethod', 'fun', 'end fun', 'endfun', 'type', 'end type', 'endtype', 'each', 'local', 'global', 'field', 'const', 'final', 'select', 'switch', 'case', 'case else', 'caseelse', 'default', 'end select', 'end switch', 'endselect', 'endswitch', 'endsel', 'repeat', 'until', 'forever', 'data', 'read', 'restore', 'abs', 'sgn', 'mod', 'pi', 'true', 'false', 'int', 'interger', 'float', 'str', 'include', 'dialect', 'new', 'delete', 'first', 'last', 'insert', 'before', 'after', 'null', 'object', 'handle', 'enum', 'end enum', 'endenum', 'array', 'end with', 'endwith', 'and', 'or', 'lor', 'xor', 'not', 'shl', 'shr', 'sar', 'infinity', 'powtwo'];
 
 export class BlitzToker {
     private input: string[];
@@ -109,7 +109,7 @@ export class BlitzToker {
                 ++k;
                 continue;
             }
-            if (c == ';') {
+            if (c == ';' || c == "'") {
                 this.tokes.push({ type: '\n', from: k, to: this.line.length - 1 });
                 break;
             }
